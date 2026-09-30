@@ -399,8 +399,11 @@
     $("gateMsg").textContent = "";
     try { await auth.signInWithPopup(provider); }
     catch (e) {
-      if (e && (e.code === "auth/popup-blocked" || e.code === "auth/operation-not-supported-in-this-environment")) { await auth.signInWithRedirect(provider); }
-      else $("gateMsg").textContent = "Giriş yapılamadı: " + (e && e.code ? e.code : "hata");
+      const code = e && e.code ? e.code : "hata";
+      if (code === "auth/popup-blocked" || code === "auth/operation-not-supported-in-this-environment" || code === "auth/missing-initial-state")
+        $("gateMsg").textContent = "Tarayıcı giriş penceresini engelledi. Linki Gmail/WhatsApp içindeki tarayıcıdan değil, doğrudan Safari veya Chrome'da açın (linke uzun basıp 'Safari'de aç').";
+      else if (code === "auth/popup-closed-by-user" || code === "auth/cancelled-popup-request") $("gateMsg").textContent = "";
+      else $("gateMsg").textContent = "Giriş yapılamadı: " + code;
     }
   });
   $("logoutBtn").addEventListener("click", () => auth.signOut());
