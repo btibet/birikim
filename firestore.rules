@@ -1,0 +1,16 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Yalnızca aşağıdaki Google hesapları okuyup yazabilir.
+    function allowed() {
+      return request.auth != null
+        && request.auth.token.email in [
+          "SIZIN-GMAIL@gmail.com",
+          "ESINIZIN-GMAIL@gmail.com"
+        ];
+    }
+    match /{document=**} {
+      allow read, write: if allowed();
+    }
+  }
+}
