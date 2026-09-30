@@ -147,6 +147,8 @@
     <p class="sub">Ayda bir güncellemek yeterli.</p>
     <div class="rate"><label for="rEurTry">1 euro kaç lira</label><input type="number" id="rEurTry" step="0.01" min="0"></div>
     <div class="rate"><label for="rGold">24 ayar gram altın (euro)</label><input type="number" id="rGold" step="0.1" min="0"></div>
+    <button class="btn ghost" id="rateBtn" type="button">Kurları internetten güncelle</button>
+    <p class="note" id="rateInfo">Kurlar açılışta 12 saatte bir kendiliğinden yenilenir; elle de değiştirebilirsiniz.</p>
     <p class="note">Ayar saflıkları: 24 → %99,5 · 22 → %91,6 · 18 → %75 · 14 → %58,5. Kuyumcu alım fiyatı bunun biraz altında kalır.</p>
     <div class="who">
       <span id="whoami"></span>
@@ -328,6 +330,42 @@
     renderHistory(); save();
   });
 
+  // ---- live rates (free, keyless APIs) ------------------------------------
+  const OZ = 31.1034768;
+  async function getJson(url) { const r = await fetch(url, { cache: "no-store" }); if (!r.ok) throw new Error(r.status); return r.json(); }
+  async function fetchRates(manual) {
+    const btn = $("rateBtn"); btn.disabled = true; btn.textContent = "Güncelleniyor…";
+    try {
+      const fx = await getJson("https://open.er-api.com/v6/latest/EUR");
+      const eurTry = Number(fx.rates && fx.rates.TRY), eurUsd = Number(fx.rates && fx.rates.USD), eurPln = Number(fx.rates && fx.rates.PLN);
+      if (!eurTry || !eurUsd) throw new Error("kur yok");
+      let goldEur = 0, src = "";
+      try { const g = await getJson("https://api.gold-api.com/price/XAU"); goldEur = Number(g.price) / OZ / eurUsd; src = "gold-api.com (canlı ons)"; }
+      catch (e) { const n = await getJson("https://api.nbp.pl/api/cenyzlota/?format=json"); goldEur = Number(n[0].cena) / eurPln; src = "NBP (günlük gram)"; }
+      if (!goldEur) throw new Error("altın yok");
+      state.rates.eurTry = Math.round(eurTry * 100) / 100;
+      state.rates.goldEur = Math.round(goldEur * 10) / 10;
+      state.ratesAt = new Date().toISOString();
+      state.ratesSource = "kur: exchangerate-api · altın: " + src;
+      render(); renderRateInfo(); save();
+    } catch (e) {
+      $("rateInfo").textContent = "Kurlar çekilemedi (" + (e && e.message ? e.message : "bağlantı") + "); elle girebilirsiniz.";
+      if (!manual) return;
+    } finally { btn.disabled = false; btn.textContent = "Kurları internetten güncelle"; }
+  }
+  function renderRateInfo() {
+    if (!state.ratesAt) return;
+    const t = new Date(state.ratesAt).toLocaleString("tr-TR", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+    $("rateInfo").textContent = "Son güncelleme " + t + " · " + (state.ratesSource || "");
+  }
+  $("rateBtn").addEventListener("click", () => fetchRates(true));
+  let autoFetched = false;
+  function maybeAutoFetch() {
+    if (autoFetched) return; autoFetched = true;
+    const age = state.ratesAt ? Date.now() - new Date(state.ratesAt).getTime() : Infinity;
+    if (age > 12 * 3600 * 1000) fetchRates(false);
+  }
+
   function setStatus(t, err) { $("status").textContent = t; $("status").classList.toggle("err", !!err); }
   function debounced() { dirty = true; clearTimeout(timer); timer = setTimeout(save, 700); }
   async function save() {
@@ -376,6 +414,7 @@
       if (snap.metadata.hasPendingWrites || dirty || saving) return;
       if (snap.exists) { apply(snap.data()); setStatus("Veritabanına bağlı."); }
       else { apply(null); setStatus("İlk kaydınız için bir hesap veya altın ekleyin."); }
+      renderRateInfo(); maybeAutoFetch();
     }, (e) => setStatus("Okuma izni yok (" + e.code + "). Bu Google hesabı izin listesinde değil.", true));
   });
 })();
